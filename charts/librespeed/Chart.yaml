@@ -1,0 +1,8 @@
+apiVersion: v2
+name: librespeed
+description: >-
+ Self-hosted Speed Test for HTML5 and more. Easy setup, examples, configurable, mobile friendly.
+ Supports PHP, Node, Multiple servers, and more
+type: application
+version: 0.1.0
+appVersion: "5.3.3"

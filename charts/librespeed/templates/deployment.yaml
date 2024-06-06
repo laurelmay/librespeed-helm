@@ -1,0 +1,127 @@
+apiVersion: apps/v1
+{{- if $.Values.speedtest.persistData }}
+kind: StatefulSet
+{{- else }}
+kind: Deployment
+{{- end }}
+metadata:
+  name: {{ include "librespeed.fullname" . }}
+  labels:
+    {{- include "librespeed.labels" . | nindent 4 }}
+spec:
+  {{- if $.Values.speedtest.persistData }}
+  serviceName: {{ include "librespeed.fullname" . }}
+  {{- end }}
+  {{- if and (not .Values.autoscaling.enabled) (not $.Values.speedtest.persistData) }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "librespeed.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "librespeed.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "librespeed.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: MODE
+              value: standalone
+            {{- if $.Values.speedtest.telemetry.enabled }}
+            - name: TELEMETRY
+              value: "true"
+            - name: EMAIL
+              value: {{ required "An email address is required when telemetry is enabled" $.Values.speedtest.telemetry.email }}
+            - name: ENABLE_ID_OBFUSCATION
+              value: {{ $.Values.speedtest.telemetry.enableIdObfuscation | quote }}
+            - name: REDACT_IP_ADDRESSES
+              value: {{ $.Values.speedtest.telemetry.redactIpAddresses | quote }}
+            {{- if $.Values.speedtest.telemetry.statsPasswordSecretName }}
+            - name: PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.speedtest.telemetry.statsPasswordSecretName }}
+                  key: {{ $.Values.speedtest.telemetry.statsPasswordSecretKey }}
+            {{- end }}
+            {{- end }}
+            - name: DISABLE_IPINFO
+              value: {{ not $.Values.speedtest.ipinfo.enabled | quote }}
+            {{- if $.Values.speedtest.ipinfo.enabled }}
+            {{- if $.Values.speedtest.ipinfo.apiKeySecretName }}
+            - name: IPINFO_APIKEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.speedtest.ipinfo.apiKeySecretName }}
+                  key: {{ $.Values.speedtest.ipinfo.apiKeySecretKey }}
+            {{- end }}
+            - name: DISTANCE
+              value: {{ $.Values.speedtest.ipinfo.distanceUnit | quote }}
+            {{- end }}
+            - name: WEBPORT
+              value: {{ $.Values.service.port | quote }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- if or $.Values.speedtest.persistData (gt (len $.Values.volumeMounts) 0) }}
+          volumeMounts:
+            {{- if $.Values.speedtest.persistData }}
+            - name: database
+              mountPath: /database
+            {{- end }}
+            {{- if gt (len $.Values.volumeMounts) 0 }}
+            {{- toYaml $.Values.volumeMounts | nindent 12 }}
+            {{- end }}
+          {{- end }}
+      {{- with .Values.volumes }}
+      volumes:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  {{- if $.Values.speedtest.persistData }}
+  volumeClaimTemplates:
+    - metadata:
+        name: database
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ $.Values.speedtest.persistenceVolumeSize }}
+  {{- end }}
+
